@@ -1,0 +1,59 @@
+//@version=5
+strategy("EMA 12/26 Crossover — Last 1 Year Backtest",
+  overlay=true,
+  default_qty_type=strategy.percent_of_equity,
+  default_qty_value=10,
+  commission_type=strategy.commission.percent,
+  commission_value=0.0)
+
+// ====== User inputs ======
+emaShortLen = input.int(12, "EMA Short Length", minval=1)
+emaLongLen  = input.int(26, "EMA Long Length", minval=1)
+useTP       = input.bool(false, "Use Take Profit")
+tpPerc      = input.float(2.0, "Take Profit (%)", step=0.1)
+useSL       = input.bool(false, "Use Stop Loss")
+slPerc      = input.float(1.0, "Stop Loss (%)", step=0.1)
+startDays   = input.int(5*365, "Backtest window (days)", minval=1)
+
+// ====== Time window (last `startDays` days) ======
+msPerDay = 24 * 60 * 60 * 1000
+startTime = timenow - startDays * msPerDay
+inWindow = time >= startTime
+
+// ====== Indicators ======
+emaShort = ta.ema(close, emaShortLen)
+emaLong  = ta.ema(close, emaLongLen)
+
+// ====== Signals ======
+longSignal  = ta.crossover(emaShort, emaLong)
+exitSignal  = ta.crossunder(emaShort, emaLong)
+
+// Disable signals outside the requested window
+longSignalAllowed = longSignal and inWindow
+exitSignalAllowed = exitSignal and inWindow
+
+// ====== Orders ======
+if (longSignalAllowed)
+    if (useTP or useSL)
+        entryPrice = close
+        tpPrice = useTP ? entryPrice * (1 + tpPerc / 100) : na
+        slPrice = useSL ? entryPrice * (1 - slPerc / 100) : na
+
+        strategy.entry(id="Long", direction=strategy.long)
+        strategy.exit(id="Exit Long", from_entry="Long",
+          limit= useTP ? tpPrice : na,
+          stop = useSL ? slPrice : na)
+    else
+        strategy.entry(id="Long", direction=strategy.long)
+
+if (exitSignalAllowed)
+    strategy.close(id="Long")
+
+// ====== Plots ======
+plot(emaShort, title="EMA Short", color=color.orange, linewidth=2)
+plot(emaLong,  title="EMA Long",  color=color.blue, linewidth=2)
+plotshape(longSignalAllowed,  title="Long Signal",  style=shape.triangleup,   location=location.belowbar, size=size.tiny, color=color.green, text="Buy")
+plotshape(exitSignalAllowed,  title="Exit Signal",  style=shape.triangledown, location=location.abovebar, size=size.tiny, color=color.red,   text="Sell")
+
+// Shade the n-year window on chart
+bgcolor(inWindow ? color.new(color.green, 90) : na, title="Backtest Window Shading")
