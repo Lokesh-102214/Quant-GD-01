@@ -1,0 +1,76 @@
+//@version=5
+strategy("ETH/USDT EMA+RSI+ATR Strategy", overlay=true, 
+         initial_capital=1000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, 
+         calc_on_every_tick=false, currency=currency.USD)
+startDays   = input.int(5*365, "Backtest window (days)", minval=1)
+// ====== Time window (last `startDays` days) ======
+msPerDay = 24 * 60 * 60 * 1000
+startTime = timenow - startDays * msPerDay
+inWindow = time >= startTime
+
+// === INPUTS ===
+// EMA settings
+fastHMA = input.int(10, "Fast HMA")
+slowEMA = input.int(50, "Slow EMA")
+useEMA = input.bool(true, "Use EMA Filter")
+
+// RSI settings
+rsiLength = input.int(14, "RSI Length")
+rsiOverbought = input.int(70, "RSI Overbought")
+rsiOversold = input.int(30, "RSI Oversold")
+useRSI = input.bool(true, "Use RSI Filter")
+
+// ATR stop loss
+atrLength = input.int(14, "ATR Length")
+atrMult = input.float(2.5, "ATR Stop Loss Multiplier")
+
+
+// === INDICATORS ===
+emaFast = ta.ema(close, fastHMA)
+emaSlow = ta.ema(close, slowEMA)
+rsi = ta.rsi(close, rsiLength)
+atr = ta.atr(atrLength)
+
+// === PLOT INDICATORS ===
+plot(useEMA ? emaFast : na, color=color.blue, title="Fast EMA")
+plot(useEMA ? emaSlow : na, color=color.orange, title="Slow EMA")
+hline(rsiOverbought, "RSI Overbought", color=color.red)
+hline(rsiOversold, "RSI Oversold", color=color.green)
+// === ENTRY CONDITIONS ===
+longCondition = true
+shortCondition = true
+
+if useEMA
+    longCondition := longCondition and (emaFast > emaSlow)
+    shortCondition := shortCondition and (emaFast < emaSlow)
+
+if useRSI
+    longCondition := longCondition and (rsi < rsiOversold)
+    shortCondition := shortCondition and (rsi > rsiOverbought)
+
+
+// === EXIT CONDITIONS ===
+exitLong = (emaFast < emaSlow) or (rsi > rsiOverbought)
+exitShort = (emaFast > emaSlow) or (rsi < rsiOversold)
+
+// === STRATEGY ORDERS ===
+longStop = close - atrMult * atr
+shortStop = close + atrMult * atr
+
+// Close positions based on mixed exit
+if exitLong
+    strategy.close("Long")
+if exitShort
+    strategy.close("Short")
+
+// Enter positions
+if longCondition and strategy.position_size == 0
+    strategy.entry("Long", strategy.long, stop=longStop)
+if shortCondition and strategy.position_size == 0
+    strategy.entry("Short", strategy.short, stop=shortStop)
+
+// === PLOT ENTRY/EXIT ARROWS ===
+plotshape(strategy.opentrades > 0 and strategy.position_size > 0 and longCondition, 
+     title="Long Entry", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+plotshape(strategy.opentrades > 0 and strategy.position_size < 0 and shortCondition, 
+     title="Short Entry", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
