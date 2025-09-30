@@ -1,17 +1,19 @@
 //@version=5
-strategy("EMA 12/26 Crossover — Last 1 Year Backtest",
+strategy("EMA 11/55 Crossover — Last 1 Year Backtest",
   overlay=true,
+  initial_capital=1000,
   default_qty_type=strategy.percent_of_equity,
-  default_qty_value=10,
+  default_qty_value=100,
   commission_type=strategy.commission.percent,
-  commission_value=0.0)
+  commission_value=0.0,
+  calc_on_every_tick=false, currency=currency.USD)
 
 // ====== User inputs ======
-emaShortLen = input.int(12, "EMA Short Length", minval=1)
-emaLongLen  = input.int(26, "EMA Long Length", minval=1)
-useTP       = input.bool(false, "Use Take Profit")
-tpPerc      = input.float(2.0, "Take Profit (%)", step=0.1)
-useSL       = input.bool(false, "Use Stop Loss")
+emaShortLen = input.int(11, "EMA Short Length", minval=1)
+emaLongLen  = input.int(55, "EMA Long Length", minval=1)
+useTP       = input.bool(true, "Use Take Profit")
+tpPerc      = input.float(5.0, "Take Profit (%)", step=0.1)
+useSL       = input.bool(true, "Use Stop Loss")
 slPerc      = input.float(1.0, "Stop Loss (%)", step=0.1)
 startDays   = input.int(5*365, "Backtest window (days)", minval=1)
 
