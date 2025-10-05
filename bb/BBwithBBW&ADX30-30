@@ -1,0 +1,88 @@
+//@version=6
+strategy("MTF Bollinger Bands Crossover (30m entries, 4H regime)",
+     overlay=true,
+     initial_capital=1000,
+     default_qty_type=strategy.percent_of_equity,
+     default_qty_value=100,
+     calc_on_every_tick=false)
+
+// ───────────── Inputs ─────────────
+src        = input.source(close, "Source")
+length     = input.int(20, "BB Length", minval=1)
+maType     = input.string("SMA", "BB MA Type", options=["SMA", "EMA", "WMA", "HMA"])
+stdDev     = input.float(2.0, "BB Std Dev", step=0.1)
+offsetBB   = input.int(10, "BB Offset", minval=0)
+
+stopLossPerc   = input.float(1.5, "Stop Loss (%)", step=0.1)
+takeProfitPerc = input.float(3.0, "Take Profit (%)", step=0.1)
+
+// Higher timeframe (HTF) for regime filter
+regimeTF   = input.timeframe("240", "Regime Timeframe (e.g. 4H)")
+adxLen     = input.int(14, "ADX Length (4H)", minval=1)
+adxThresh  = input.float(20.0, "ADX Threshold", step=0.5)
+bbwPeriod  = input.int(100, "BBW Rolling Period (4H)", minval=20)
+
+// ───────────── Moving Average Function ─────────────
+ma(src, length, maType) =>
+    maType == "SMA" ? ta.sma(src, length) :
+     maType == "EMA" ? ta.ema(src, length) :
+     maType == "WMA" ? ta.wma(src, length) :
+     maType == "HMA" ? ta.hma(src, length) :
+     ta.sma(src, length) // fallback
+
+// ───────────── Bollinger Bands on 30m (execution timeframe) ─────────────
+basis   = ma(src, length, maType)
+dev     = stdDev * ta.stdev(src, length)
+upperBB = basis + dev
+lowerBB = basis - dev
+
+// ───────────── Get BB + ADX from 4H timeframe ─────────────
+htfBasis   = request.security(syminfo.tickerid, regimeTF, ma(src, length, maType))
+htfDev     = request.security(syminfo.tickerid, regimeTF, stdDev * ta.stdev(src, length))
+htfUpperBB = htfBasis + htfDev
+htfLowerBB = htfBasis - htfDev
+
+htfBBW     = request.security(syminfo.tickerid, regimeTF, (htfUpperBB - htfLowerBB) / htfBasis * 100)
+[plusDI, minusDI, adx] = request.security(syminfo.tickerid, regimeTF, ta.dmi(adxLen , 14))
+
+htfBBWLow  = ta.lowest(htfBBW, bbwPeriod) + (ta.highest(htfBBW, bbwPeriod) - ta.lowest(htfBBW, bbwPeriod)) * 0.2
+adxRising  = ta.rising(adx, 3)
+
+// ───────────── Regime Filter (from 4H) ─────────────
+bbwFilter = htfBBW > htfBBWLow
+adxFilter = adx > adxThresh or adxRising
+regimeOK  = bbwFilter and adxFilter
+
+// ───────────── 30m Trading Logic ─────────────
+// Long when close crosses above upper BB (offset) & 4H regime trending
+longCondition  = ta.crossover(close, upperBB[offsetBB]) and regimeOK
+exitLong       = ta.crossunder(close, upperBB[offsetBB])
+
+// Short when close crosses below lower BB (offset) & 4H regime trending
+shortCondition = ta.crossunder(close, lowerBB[offsetBB]) and regimeOK
+exitShort      = ta.crossover(close, lowerBB[offsetBB])
+
+// ───────────── Strategy Execution ─────────────
+if (longCondition)
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", from_entry="Long",stop  = strategy.position_avg_price * (1 - stopLossPerc/100),limit = strategy.position_avg_price * (1 + takeProfitPerc/100))
+
+if (shortCondition)
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", from_entry="Short",stop  = strategy.position_avg_price * (1 + stopLossPerc/100),limit = strategy.position_avg_price * (1 - takeProfitPerc/100))
+
+if (exitLong)
+    strategy.close("Long")
+
+if (exitShort)
+    strategy.close("Short")
+
+// ───────────── Regime Visualization (from 4H) ─────────────
+bgcolor(regimeOK ? color.new(color.green, 85) : color.new(color.red, 88), title="4H Market Regime")
+
+plotchar(regimeOK, title="Regime OK (4H)", char="▲", color=color.new(color.green, 0), location=location.bottom, size=size.tiny)
+
+// ───────────── Plotting ─────────────
+plot(basis,   color=color.orange, title="BB Basis MA", linewidth=2)
+plot(upperBB, color=color.teal,   title="BB Upper Band", linewidth=1)
+plot(lowerBB, color=color.teal,   title="BB Lower Band", linewidth=1)
