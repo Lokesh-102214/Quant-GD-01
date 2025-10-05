@@ -1,0 +1,60 @@
+//@version=6
+strategy("Bollinger Bands Crossover Strategy (Offset 10)",
+     overlay=true,
+     initial_capital=1000,
+     default_qty_type=strategy.percent_of_equity,
+     default_qty_value=100,
+     calc_on_every_tick=false)
+
+// ───────────── Inputs ─────────────
+src      = input.source(close, "Source")
+length   = input.int(20, "BB Length", minval=1)
+maType   = input.string("SMA", "BB MA Type", options=["SMA", "EMA", "WMA", "HMA"])
+stdDev   = input.float(2.0, "BB Std Dev", step=0.1)
+offsetBB = input.int(8, "BB Offset", minval=0)
+
+stopLossPerc   = input.float(1.5, "Stop Loss (%)", step=0.1)
+takeProfitPerc = input.float(5.1, "Take Profit (%)", step=0.1)
+
+// ───────────── Moving Average Function ─────────────
+ma(src, length, maType) =>
+    maType == "SMA" ? ta.sma(src, length) :
+     maType == "EMA" ? ta.ema(src, length) :
+     maType == "WMA" ? ta.wma(src, length) :
+     maType == "HMA" ? ta.hma(src, length) :
+     ta.sma(src, length) // fallback
+
+// ───────────── Bollinger Bands Calculation ─────────────
+basis   = ma(src, length, maType)
+dev     = stdDev * ta.stdev(src, length)
+upperBB = basis + dev
+lowerBB = basis - dev
+
+// ───────────── Strategy Logic ─────────────
+// Long Entry: price closes above upper band (with offset)
+longCondition  = ta.crossover(close, upperBB[offsetBB])
+exitLong       = ta.crossunder(close, upperBB[offsetBB])
+
+// Short Entry: price closes below lower band (with offset)
+shortCondition = ta.crossunder(close, lowerBB[offsetBB])
+exitShort      = ta.crossover(close, lowerBB[offsetBB])
+
+// ───────────── Strategy Execution ─────────────
+if (longCondition)
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", from_entry="Long",stop  = strategy.position_avg_price * (1 - stopLossPerc/100),limit = strategy.position_avg_price * (1 + takeProfitPerc/100))
+
+if (shortCondition)
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", from_entry="Short",stop  = strategy.position_avg_price * (1 + stopLossPerc/100),limit = strategy.position_avg_price * (1 - takeProfitPerc/100))
+
+if (exitLong)
+    strategy.close("Long")
+
+if (exitShort)
+    strategy.close("Short")
+
+// ───────────── Plotting ─────────────
+plot(basis,   color=color.orange, title="BB Basis MA", linewidth=2)
+plot(upperBB, color=color.teal,   title="BB Upper Band", linewidth=1)
+plot(lowerBB, color=color.teal,   title="BB Lower Band", linewidth=1)
